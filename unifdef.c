@@ -152,6 +152,7 @@ static char const * const linestate_name[] = {
 
 static bool             compblank;		/* -B: compress blank lines */
 static bool             lnblank;		/* -b: blank deleted lines */
+static bool             lncomment;		/* -C: comment deleted lines */
 static bool             complement;		/* -c: do the complement */
 static bool             debugging;		/* -d: debugging reports */
 static bool             inplace;		/* -m: modify in place */
@@ -256,7 +257,7 @@ main(int argc, char *argv[])
 {
 	int opt;
 
-	while ((opt = getopt(argc, argv, "i:D:U:f:I:M:o:x:bBcdehKklmnsStV")) != -1)
+	while ((opt = getopt(argc, argv, "i:D:U:f:I:M:o:x:bBcdehKklLmnsStV")) != -1)
 		switch (opt) {
 		case 'i': /* treat stuff controlled by these symbols as text */
 			/*
@@ -283,6 +284,9 @@ main(int argc, char *argv[])
 		case 'b': /* blank deleted lines instead of omitting them */
 		case 'l': /* backwards compatibility */
 			lnblank = true;
+			break;
+		case 'L': /* comment deleted lines instead of omitting them */
+			lncomment = true;
 			break;
 		case 'B': /* compress blank lines around removed section */
 			compblank = true;
@@ -346,6 +350,8 @@ main(int argc, char *argv[])
 	argv += optind;
 	if (compblank && lnblank)
 		errx(2, "-B and -b are mutually exclusive");
+	if (compblank && lncomment)
+		errx(2, "-B and -L are mutually exclusive");
 	if (symlist && (ofilename != NULL || inplace || argc > 1))
 		errx(2, "-s only works with one input file");
 	if (argc > 1 && ofilename != NULL)
@@ -462,7 +468,7 @@ static void
 synopsis(FILE *fp)
 {
 	fprintf(fp,
-	    "usage:	unifdef [-bBcdehKkmnsStV] [-x{012}] [-Mext] [-opath] \\\n"
+	    "usage:	unifdef [-bBcdehKkLmnsStV] [-x{012}] [-Mext] [-opath] \\\n"
 	    "		[-[i]Dsym[=val]] [-[i]Usym] [-fpath] ... [file] ...\n");
 }
 
@@ -693,8 +699,8 @@ flushline(bool keep)
 {
 	if (symlist)
 		return;
+	bool blankline = tline[strspn(tline, " \t\r\n")] == '\0';
 	if (keep ^ complement) {
-		bool blankline = tline[strspn(tline, " \t\r\n")] == '\0';
 		if (blankline && compblank && blankcount != blankmax) {
 			delcount += 1;
 			blankcount += 1;
@@ -709,6 +715,12 @@ flushline(bool keep)
 	} else {
 		if (lnblank && fputs(newline, output) == EOF)
 			closeio();
+		if (lncomment) {
+			if (fputs("// ", output) == EOF)
+				closeio();
+			if (fputs(tline, output) == EOF)
+				closeio();
+		}
 		altered = true;
 		delcount += 1;
 		blankcount = 0;
